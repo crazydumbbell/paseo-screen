@@ -82,12 +82,15 @@ function Viewer({
   const stop = useRpc(stopApp);
   const [error, setError] = useState<string | null>(null);
 
-  // A run started anywhere (this tab, another viewer, an agent tool) makes the tab follow its window.
+  // A run started anywhere (this tab, another workspace, an agent tool) makes the tab follow its window.
   const startedAt = app.data?.startedAt ?? 0;
   const seenStart = useRef<number | null>(null);
   useEffect(() => {
     if (!app.data) return;
-    if (seenStart.current !== null && startedAt !== seenStart.current && app.data.running) {
+    // A tab opened while the app already runs (say, started from another workspace) shows it too,
+    // unless this tab was set to a specific window.
+    const fresh = seenStart.current === null ? target === "display" : startedAt !== seenStart.current;
+    if (fresh && app.data.running) {
       following.current = true;
       void windows.refetch();
     }
