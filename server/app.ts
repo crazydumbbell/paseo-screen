@@ -1,4 +1,4 @@
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -6,6 +6,9 @@ import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { getApp, runApp, suggestCommand } from "../shared/contracts";
 
 type Status = RpcOutput<typeof getApp>;
+/** [pid, parent pid] pairs. */
+export type ParentPairs = [number, number][];
+const WINDOWS = process.platform === "win32";
 
 let child: ChildProcess | null = null;
 let command = "";
@@ -24,10 +27,15 @@ function collect(chunk: Buffer) {
 }
 
 export function stop(): Status {
-  // Detached, so the pid is also the process group: the shell and the game it started.
-  if (child?.pid) {
+  const pid = child?.pid;
+  if (!pid) return status();
+  if (WINDOWS) {
+    // taskkill /T takes the shell and everything it started.
+    spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+  } else {
+    // Detached, so the pid is also the process group: the shell and the game it started.
     try {
-      process.kill(-child.pid, "SIGTERM");
+      process.kill(-pid, "SIGTERM");
     } catch {}
   }
   return status();
@@ -41,8 +49,11 @@ export function start(input: RpcInput<typeof runApp>): Status {
   startedAt = Date.now();
   exitCode = null;
   log = [];
-  // A login shell picks up the user's PATH (Homebrew godot, node, ...).
-  const proc = spawn("/bin/zsh", ["-lc", input.command], { cwd: input.directory, detached: true });
+  // macOS: a login shell picks up the user's PATH (Homebrew godot, node, ...). Windows: cmd.exe, with its
+  // own console hidden; the app's windows still show.
+  const proc = WINDOWS
+    ? spawn(input.command, { cwd: input.directory, shell: true, windowsHide: true })
+    : spawn("/bin/zsh", ["-lc", input.command], { cwd: input.directory, detached: true });
   child = proc;
   proc.stdout?.on("data", collect);
   proc.stderr?.on("data", collect);
@@ -57,16 +68,17 @@ export function start(input: RpcInput<typeof runApp>): Status {
 export const current = (): Status => status();
 export const recentLog = (lines: number): string[] => log.slice(-lines);
 
-/** Pids of the launched app and everything it started. */
-export async function launchedPids(): Promise<Set<number>> {
+/** Pids of the launched app and everything it started. Windows passes the helper's process table. */
+export async function launchedPids(pairs?: ParentPairs): Promise<Set<number>> {
   const root = child?.pid;
   const found = new Set<number>();
   if (!root) return found;
-  const { stdout } = await promisify(execFile)("ps", ["-axo", "pid=,ppid="]);
-  const parentOf = stdout
-    .trim()
-    .split("\n")
-    .map((line) => line.trim().split(/\s+/).map(Number) as [number, number]);
+  const parentOf =
+    pairs ??
+    (await promisify(execFile)("ps", ["-axo", "pid=,ppid="])).stdout
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/).map(Number) as [number, number]);
   found.add(root);
   for (let grew = true; grew; ) {
     grew = false;

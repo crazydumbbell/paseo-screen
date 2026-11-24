@@ -143,6 +143,7 @@ function Viewer({
   }, []);
 
   const frames = useRef(0);
+  const jpeg = useRef(false);
   const bytes = useRef(0);
   const [rate, setRate] = useState({ fps: 0, kbps: 0 });
   useEffect(() => {
@@ -164,6 +165,7 @@ function Viewer({
   const stream = useSubscription(screenStream, { target, codec, stream: streamId }, (frame) => {
     frames.current += 1;
     bytes.current += frame.byteLength;
+    jpeg.current = frame[0] === 0; // a Windows host always sends JPEG
     surface.current?.draw(frame);
   });
   useEffect(() => {
@@ -177,7 +179,7 @@ function Viewer({
   const line = statusLine({
     error: error ?? (stream.status === "error" ? stream.error.message : null) ?? windows.error?.message ?? null,
     rate,
-    codec,
+    codec: jpeg.current ? "jpeg" : codec,
     live: stream.status === "live",
     canControl: windows.data?.canControl ?? true,
     app: app.data,

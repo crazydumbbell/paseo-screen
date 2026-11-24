@@ -1,6 +1,6 @@
 # Run & Watch
 
-Run an app or game on a Mac host and watch and play it from any Paseo desktop app connected to that host. Useful when the code lives on a laptop but you sit at another computer.
+Run an app or game on a Mac or Windows host and watch and play it from any Paseo desktop app connected to that host. Useful when the code lives on a laptop but you sit at another computer.
 
 Open **화면** from a workspace's + menu, type a command such as `godot --path .`, and press 실행. The command runs in the workspace folder through a login shell, and the tab switches to the first window the app opens. You can also pick any open window or the whole screen. Mouse, wheel, and keyboard input in the tab go to the host while the view has focus. The tab shows frame rate, bandwidth, and the app's last log line.
 
@@ -8,11 +8,14 @@ Agents on the host get five tools: `screen_run`, `screen_stop`, `screen_status` 
 
 ## Setup
 
-The host must be a Mac running macOS 14 or later with Xcode Command Line Tools (`xcode-select --install`). On first use the plugin compiles a small Swift helper into `~/Library/Caches/paseo-screen`. Grant Paseo Screen Recording to capture and Accessibility to send input. The helper is rebuilt when the plugin updates. If the host has an Apple Development certificate it is signed with it, so the approval carries over. Otherwise macOS asks again after an update.
+On first use the plugin compiles a small helper on the host and keeps it until the plugin updates.
+
+- macOS 14 or later needs Xcode Command Line Tools (`xcode-select --install`). The helper is Swift, built into `~/Library/Caches/paseo-screen`. Grant Paseo Screen Recording to capture and Accessibility to send input. If the host has an Apple Development certificate the helper is signed with it, so the approval carries over updates. Otherwise macOS asks again after an update.
+- Windows 10 or 11 needs nothing extra. The helper is C#, built with the `csc.exe` that ships with .NET Framework 4 into `%LOCALAPPDATA%\paseo-screen`. Commands run through `cmd`. Input cannot reach windows of apps running as administrator.
 
 ## How it streams
 
-Video is H.264 at up to 30 fps and 1280 pixels wide, encoded with VideoToolbox on the host and decoded with WebCodecs in the app. A moving game window takes about 180 KB/s, and a still screen sends nothing. The host only sends as many frames as the link has acknowledged, so a slow relay drops frames instead of falling behind. Clients without WebCodecs get JPEG.
+On a Mac host, video is H.264 at up to 30 fps and 1280 pixels wide, encoded with VideoToolbox and decoded with WebCodecs in the app. A moving game window takes about 180 KB/s. A Windows host sends JPEG frames, which take several times more bandwidth. Either way a still screen sends nothing, and the host only sends as many frames as the link has acknowledged, so a slow relay drops frames instead of falling behind.
 
 ## Limits
 

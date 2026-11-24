@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { defineAgentTool } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { MAC_KEYCODES } from "../shared/keys";
 import { current, recentLog, start, stop } from "./app";
-import { explain, helperPath, windows } from "./screen";
+import { explain, helperPath, startHelper, windows, writeInput } from "./screen";
 
 const exec = promisify(execFile);
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,6 +44,27 @@ async function size(path: string) {
   return { width: Number(/pixelWidth: (\d+)/.exec(stdout)?.[1]), height: Number(/pixelHeight: (\d+)/.exec(stdout)?.[1]) };
 }
 
+async function shotMac(id: string, path: string) {
+  await exec("screencapture", ["-x", "-o", "-t", "png", ...(id === "display" ? [] : ["-l", id]), path], { timeout: 10_000 });
+  let { width, height } = await size(path);
+  if (Math.max(width, height) > 1600) {
+    await exec("sips", ["-Z", "1600", path], { timeout: 10_000 }); // shrink only: -Z also enlarges
+    ({ width, height } = await size(path));
+  }
+  return { width, height };
+}
+
+/** The Windows helper captures, shrinks to 1600 px, saves the PNG, and prints "width height". */
+async function shotWindows(id: string, path: string) {
+  const { stdout } = await exec(await helperPath(), ["shot", id, path], { timeout: 15_000, windowsHide: true }).catch(
+    (error: { stderr?: string }) => {
+      throw new Error(explain(error.stderr ?? ""));
+    },
+  );
+  const [width, height] = stdout.trim().split(" ").map(Number);
+  return { width: width ?? 0, height: height ?? 0 };
+}
+
 // Size of the last screenshot per target, to turn its pixels into helper coordinates.
 const shots = new Map<string, { width: number; height: number }>();
 
@@ -52,7 +73,7 @@ const run = defineAgentTool({
   title: "Run app on host screen",
   description:
     "Start an app or game on this machine so the user can watch and control it in Paseo's 화면 tab. " +
-    "Stops the previously started one. Runs through a login shell in the given directory (default: your cwd). " +
+    "Stops the previously started one. Runs through a shell (zsh login shell on macOS, cmd on Windows) in the given directory (default: your cwd). " +
     'Example: { "command": "godot --path ." }',
   input: z.object({ command: z.string().min(1), directory: z.string().optional() }),
   async execute({ command, directory }, { agent }) {
@@ -100,12 +121,7 @@ const capture = defineAgentTool({
     await mkdir(dir, { recursive: true });
     const path = join(dir, `shot-${Date.now()}.png`);
     try {
-      await exec("screencapture", ["-x", "-o", "-t", "png", ...(id === "display" ? [] : ["-l", id]), path], { timeout: 10_000 });
-      let { width, height } = await size(path);
-      if (Math.max(width, height) > 1600) {
-        await exec("sips", ["-Z", "1600", path], { timeout: 10_000 }); // shrink only: -Z also enlarges
-        ({ width, height } = await size(path));
-      }
+      const { width, height } = process.platform === "win32" ? await shotWindows(id, path) : await shotMac(id, path);
       shots.set(id, { width, height });
       return { text: `${path}\n${width}x${height}, ${label}` };
     } catch (error) {
@@ -162,11 +178,11 @@ const input = defineAgentTool({
       }
     }
     const bin = await helperPath();
-    const child = spawn(bin, ["input", id]);
+    const child = startHelper(bin, ["input", id]);
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.stdin.on("error", () => {});
-    child.stdin.end(`${lines.join("\n")}\n`);
+    writeInput(child, lines, true);
     const code = await new Promise<number | null>((done) => {
       const timer = setTimeout(() => child.kill(), total + 10_000);
       child.on("exit", (c) => (clearTimeout(timer), done(c)));

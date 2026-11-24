@@ -1,7 +1,7 @@
 {
   "id": "paseo-screen",
   "name": "Run & Watch",
-  "description": "Run an app or game on a Mac host, watch and play it in a Paseo tab, and let agents launch, screenshot, and drive it.",
+  "description": "Run an app or game on a Mac or Windows host, watch and play it in a Paseo tab, and let agents launch, screenshot, and drive it.",
   "media": [],
   "requirements": {
     "paseo": ">=0.17.4"
