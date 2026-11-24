@@ -1,4 +1,4 @@
-# Host screen
+# Run & Watch
 
 Run an app or game on a Mac host and watch and play it from any Paseo desktop app connected to that host. Useful when the code lives on a laptop but you sit at another computer.
 

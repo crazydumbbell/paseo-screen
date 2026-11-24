@@ -28,7 +28,7 @@
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
-  "description": "Run an app on a Mac host and watch and play it from any Paseo desktop app.",
+  "description": "Run an app or game on a Mac host, watch and play it in a Paseo tab, and let agents launch, screenshot, and drive it.",
   "license": "MIT",
   "repository": {
     "type": "git",
