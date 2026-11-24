@@ -18,6 +18,7 @@ let helper: Promise<string> | null = null;
 
 /** Compiles the Swift helper once per source version. */
 export function helperPath(): Promise<string> {
+  if (process.platform !== "darwin") return Promise.reject(new Error("이 호스트는 Mac이 아님. 화면 전송은 Mac 호스트만 지원"));
   helper ??= (async () => {
     const dir = join(homedir(), "Library/Caches/paseo-screen");
     const bin = join(dir, `helper-${createHash("sha256").update(HELPER_SWIFT).digest("hex").slice(0, 12)}`);
