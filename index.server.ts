@@ -1,14 +1,14 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { AGENT_PROMPT, AGENT_TOOLS } from "./server/agent-tools";
-import { current, start, stop, suggest } from "./server/app";
-import { input, stream, windows } from "./server/screen";
+import { current, stop, suggest } from "./server/app";
+import { input, launch, stream, windows } from "./server/screen";
 import { getApp, listWindows, runApp, screenStream, sendInput, stopApp, suggestCommand } from "./shared/contracts";
 
 export default function contribute(server: PluginServerContext) {
   server.handle(screenStream, stream);
   server.handle(listWindows, windows);
   server.handle(sendInput, input);
-  server.handle(runApp, start);
+  server.handle(runApp, launch);
   server.handle(stopApp, stop);
   server.handle(getApp, current);
   server.handle(suggestCommand, suggest);

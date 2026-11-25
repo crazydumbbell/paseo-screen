@@ -6,8 +6,8 @@ import { promisify } from "node:util";
 import { defineAgentTool } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { MAC_KEYCODES } from "../shared/keys";
-import { current, recentLog, start, stop } from "./app";
-import { explain, helperPath, startHelper, windows, writeInput } from "./screen";
+import { current, recentLog, stop } from "./app";
+import { explain, helperPath, launch, startHelper, windows, writeInput } from "./screen";
 
 const exec = promisify(execFile);
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,12 +77,11 @@ const run = defineAgentTool({
     'Example: { "command": "godot --path ." }',
   input: z.object({ command: z.string().min(1), directory: z.string().optional() }),
   async execute({ command, directory }, { agent }) {
-    start({ command, directory: directory ?? agent.cwd });
+    await launch({ command, directory: directory ?? agent.cwd });
     for (let i = 0; i < 20; i += 1) {
       await pause(500);
       const target = await resolve("app");
       if (target.id !== "display") return { text: `Started. Window: ${target.label}\n${describe()}` };
-      if (!current().running) break;
     }
     return { text: `No window yet.\n${describe()}` };
   },
@@ -130,21 +129,16 @@ const capture = defineAgentTool({
   },
 });
 
-const action = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("click"),
-    x: z.number(),
-    y: z.number(),
-    button: z.enum(["left", "right"]).default("left"),
-  }),
-  z.object({ type: z.literal("move"), x: z.number(), y: z.number() }),
-  z.object({
-    type: z.literal("key"),
-    key: z.string().describe('KeyboardEvent.code, e.g. "Space", "KeyW", "ArrowUp", "Enter", "Escape", "Digit1"'),
-    holdMs: z.number().min(0).max(10_000).default(60),
-  }),
-  z.object({ type: z.literal("wait"), ms: z.number().min(0).max(10_000) }),
-]);
+// One flat object shape: some providers drop tools whose schema branches (anyOf/oneOf).
+const action = z.object({
+  type: z.enum(["click", "move", "key", "wait"]),
+  x: z.number().optional().describe("click/move: x in screenshot pixels"),
+  y: z.number().optional().describe("click/move: y in screenshot pixels"),
+  button: z.enum(["left", "right"]).optional().describe("click: default left"),
+  key: z.string().optional().describe('key: KeyboardEvent.code, e.g. "Space", "KeyW", "ArrowUp", "Enter", "Escape", "Digit1"'),
+  holdMs: z.number().optional().describe("key: how long to hold, default 60"),
+  ms: z.number().optional().describe("wait: milliseconds"),
+});
 
 const input = defineAgentTool({
   name: "screen_input",
@@ -162,19 +156,25 @@ const input = defineAgentTool({
     const lines: string[] = [];
     let total = 0;
     for (const a of actions) {
-      if (a.type === "click") {
-        const b = a.button === "right" ? 2 : 0;
-        lines.push(`m ${at(a.x, a.y)}`, "s 30", `d ${at(a.x, a.y)} ${b}`, "s 50", `u ${at(a.x, a.y)} ${b}`);
-        total += 80;
-      } else if (a.type === "move") lines.push(`m ${at(a.x, a.y)}`);
-      else if (a.type === "wait") {
-        lines.push(`s ${a.ms}`);
-        total += a.ms;
+      if (a.type === "wait") {
+        const ms = Math.min(Math.max(a.ms ?? 0, 0), 10_000);
+        lines.push(`s ${ms}`);
+        total += ms;
+      } else if (a.type === "key") {
+        const code = a.key === undefined ? undefined : MAC_KEYCODES[a.key];
+        if (code === undefined) return { text: `Unknown key "${a.key ?? ""}". Use KeyboardEvent.code names.`, isError: true };
+        const hold = Math.min(Math.max(a.holdMs ?? 60, 0), 10_000);
+        lines.push(`k ${code} 1`, `s ${hold}`, `k ${code} 0`);
+        total += hold;
       } else {
-        const code = MAC_KEYCODES[a.key];
-        if (code === undefined) return { text: `Unknown key "${a.key}". Use KeyboardEvent.code names.`, isError: true };
-        lines.push(`k ${code} 1`, `s ${a.holdMs}`, `k ${code} 0`);
-        total += a.holdMs;
+        if (a.x === undefined || a.y === undefined) return { text: `${a.type} needs x and y.`, isError: true };
+        const p = at(a.x, a.y);
+        if (a.type === "move") lines.push(`m ${p}`);
+        else {
+          const b = a.button === "right" ? 2 : 0;
+          lines.push(`m ${p}`, "s 30", `d ${p} ${b}`, "s 50", `u ${p} ${b}`);
+          total += 80;
+        }
       }
     }
     const bin = await helperPath();

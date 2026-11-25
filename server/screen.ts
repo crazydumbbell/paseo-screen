@@ -7,11 +7,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginSubscriptionContext } from "@getpaseo/plugin/server";
-import type { listWindows, sendInput } from "../shared/contracts";
+import type { listWindows, runApp, sendInput } from "../shared/contracts";
 import { MAC_TO_VK } from "../shared/keys";
 import { HELPER_SWIFT } from "./helper-source";
 import { HELPER_CSHARP } from "./helper-windows";
-import { launchedPids, type ParentPairs } from "./app";
+import { current, launchedPids, type ParentPairs, start } from "./app";
 
 const run = promisify(execFile);
 const STREAM_ARGS = ["30", "1280"]; // fps, max width
@@ -122,10 +122,27 @@ export async function windows(_: RpcInput<typeof listWindows>): Promise<RpcOutpu
     parents?: ParentPairs;
   };
   const launched = await launchedPids(parsed.parents);
-  return {
-    canControl: parsed.canControl,
-    windows: parsed.windows.map((w) => ({ ...w, launched: launched.has(w.pid) })),
-  };
+  let list = parsed.windows.map((w) => ({ ...w, launched: launched.has(w.pid) }));
+  // Some launchers hand off and exit at once (Windows 11 Notepad, Store apps, `open -a`), so the app's
+  // window has no parent link to what we ran. Then take a window that appeared after the launch.
+  if (baseline && !list.some((w) => w.launched) && !current().running && Date.now() - baseline.at < 20_000) {
+    const before = baseline.ids;
+    list = list.map((w) => ({ ...w, launched: !before.has(w.id) }));
+  }
+  return { canControl: parsed.canControl, windows: list };
+}
+
+let baseline: { ids: Set<number>; at: number } | null = null;
+
+/** Starts the app after noting which windows already exist. */
+export async function launch(input: RpcInput<typeof runApp>) {
+  baseline = null;
+  const ids = await windows({})
+    .then((r) => new Set(r.windows.map((w) => w.id)))
+    .catch(() => null);
+  const status = start(input);
+  baseline = ids && { ids, at: Date.now() };
+  return status;
 }
 
 const streams = new Map<string, ChildProcessWithoutNullStreams>();
