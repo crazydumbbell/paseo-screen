@@ -14,7 +14,7 @@ import { HELPER_CSHARP } from "./helper-windows";
 import { current, launchedPids, type ParentPairs, start } from "./app";
 
 const run = promisify(execFile);
-const STREAM_ARGS = ["30", "1280"]; // fps, max width
+const STREAM_ARGS = ["30", "1280"]; // fps, longest side in pixels
 
 const WINDOWS = process.platform === "win32";
 export const SUPPORTED = process.platform === "darwin" || WINDOWS;

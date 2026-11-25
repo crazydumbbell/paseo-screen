@@ -249,7 +249,9 @@ if !inputOnly {
   let scale = Double(filter.pointPixelScale)
   var width = Double(filter.contentRect.width) * scale
   var height = Double(filter.contentRect.height) * scale
-  if width > maxWidth { height = height * maxWidth / width; width = maxWidth }
+  // Cap the longest side, so tall windows (phone-shaped video, portrait games) are not twice the pixels.
+  let longest = max(width, height)
+  if longest > maxWidth { width = width * maxWidth / longest; height = height * maxWidth / longest }
   let config = SCStreamConfiguration()
   config.width = max(2, Int(width) & ~1)
   config.height = max(2, Int(height) & ~1)

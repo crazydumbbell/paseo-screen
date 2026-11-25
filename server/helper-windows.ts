@@ -301,7 +301,7 @@ static class Helper {
       if (MaySend()) {
         Bitmap shot = Capture();
         if (shot != null) {
-          shot = Fit(shot, maxWidth, true);
+          shot = Fit(shot, maxWidth, false); // cap the longest side, like the macOS helper
           ulong print = Fingerprint(shot);
           bool force;
           lock (gate) { force = forceFrame; forceFrame = false; }
